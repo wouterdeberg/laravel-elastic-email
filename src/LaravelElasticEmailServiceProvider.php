@@ -1,7 +1,7 @@
 <?php
 
 
-namespace Flux\LaravelElasticEmail;
+namespace FlexFlux\LaravelElasticEmail;
 
 use Illuminate\Mail\MailServiceProvider as LaravelMailServiceProvider;
 

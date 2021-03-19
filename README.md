@@ -1,4 +1,4 @@
-# FLUX - Laravel Elastic Email
+# FlexFlux - Laravel Elastic Email
 
 Laravel Elastic Email is a wrapper for Elastic Email.
 You can send e-mails in your project just like you usually do with Laravel's native mailers, the package makes sure the e-mails are send via the Elastic Email API using your Elastic Email account.
@@ -13,7 +13,7 @@ Laravel version 8.12 or higher.
 * Step 1: Install package via composer.
 
 ```bash
-composer require flux/laravel-elastic-email
+composer require flexflux/laravel-elastic-email
 ```
 
 * Step 2: Add your account and API keys to your **.env file**.
@@ -48,7 +48,7 @@ MAIL_MAILER=elastic_email
      */
     ...
 //    Illuminate\Mail\MailServiceProvider::class,
-      \Flux\LaravelElasticEmail\LaravelElasticEmailServiceProvider::class,
+      \FlexFlux\LaravelElasticEmail\LaravelElasticEmailServiceProvider::class,
     ...
 ],
 ```

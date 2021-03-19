@@ -1,5 +1,5 @@
 {
-    "name": "flux/laravel-elastic-email",
+    "name": "flexflux/laravel-elastic-email",
     "description": "Package to send emails with attachements via an Elastic Email Driver.",
     "type": "library",
     "license": "MIT",
@@ -12,7 +12,7 @@
     "minimum-stability": "stable",
     "autoload": {
         "psr-4": {
-            "Flux\\LaravelElasticEmail\\": "src/"
+            "FlexFlux\\LaravelElasticEmail\\": "src/"
         }
     },
     "require": {

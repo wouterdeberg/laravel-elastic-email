@@ -1,7 +1,7 @@
 <?php
 
 
-namespace Flux\LaravelElasticEmail;
+namespace FlexFlux\LaravelElasticEmail;
 
 use GuzzleHttp\ClientInterface;
 use Illuminate\Mail\Transport\Transport;
