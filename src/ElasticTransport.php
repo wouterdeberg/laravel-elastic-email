@@ -3,129 +3,99 @@
 
 namespace FlexFlux\LaravelElasticEmail;
 
-use GuzzleHttp\ClientInterface;
-use Illuminate\Mail\Transport\Transport;
+use Symfony\Component\Mime\Email;
 use Illuminate\Support\Facades\Storage;
-use Swift_Mime_SimpleMessage;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mime\Part\DataPart;
+use Symfony\Component\Mime\MessageConverter;
+use Symfony\Component\Mailer\Transport\AbstractTransport;
 
-class ElasticTransport extends Transport
+class ElasticTransport extends AbstractTransport
 {
-    protected $client;
     protected $key;
-    protected $account;
     protected $url = "https://api.elasticemail.com/v2/email/send";
 
-    public function __construct(ClientInterface $client, $key, $account)
+    public function __construct($key)
     {
-        $this->client = $client;
         $this->key = $key;
-        $this->account = $account;
     }
 
-    public function send(Swift_Mime_SimpleMessage $message, &$failedRecipients = null)
+    public function __toString(): string
     {
-        $this->beforeSendPerformed($message);
+        return 'elasticemail';
+    }
+
+     /**
+     * {@inheritdoc}
+     */
+    public function doSend(SentMessage $message) : void
+    {
+        $email = MessageConverter::toEmail($message->getOriginalMessage());
 
         $data = [
             'apikey' => $this->key,
-            'account' => $this->account,
-            'msgTo' => $this->getEmailAddresses($message),
-            'msgCC' => $this->getEmailAddresses($message, 'getCc'),
-            'msgBcc' => $this->getEmailAddresses($message, 'getBcc'),
-            'msgFrom' => $this->getFromAddress($message)['email'],
-            'msgFromName' => $this->getFromAddress($message)['name'],
-            'from' => $this->getFromAddress($message)['email'],
-            'fromName' => $this->getFromAddress($message)['name'],
-            'to' => $this->getEmailAddresses($message),
-            'subject' => $message->getSubject(),
-            'bodyHtml' => $message->getBody(),
-            'bodyText' => $this->getText($message),
-            'isTransactional' => true,
+            'msgTo' => $this->getEmailAddresses($email),
+            'msgCC' => $this->getEmailAddresses($email, 'getCc'),
+            'msgBcc' => $this->getEmailAddresses($email, 'getBcc'),
+            'msgFrom' => $email->getFrom()[0]->getAddress(),
+            'msgFromName' => $email->getFrom()[0]->getName(),
+            'from' => $email->getFrom()[0]->getAddress(),
+            'fromName' => $email->getFrom()[0]->getName(),
+            'replyTo' => $this->getEmailAddresses($email, 'getReplyTo'),
+            'to' => $this->getEmailAddresses($email),
+            'subject' => $email->getSubject(),
+            'bodyHtml' => $email->getHtmlBody(),
+            'bodyText' => $email->getTextBody(),
+            'isTransactional' => $email->getHeaders()->getHeaderBody('x-metadata-transactional') ? true : false,
         ];
 
-        $attachments = $message->getChildren();
-        $attachmentCount = $this->checkAttachmentCount($attachments);
+        $attachments = $email->getAttachments();
+        $attachmentCount = count($attachments);
 
         if ($attachmentCount > 0) {
             $data = $this->attach($attachments, $data);
         }
+
         $ch = curl_init();
 
-        curl_setopt_array($ch, array(
+        curl_setopt_array($ch, [
             CURLOPT_URL => $this->url,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $data,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => false,
-            CURLOPT_SSL_VERIFYPEER => false
-        ));
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
 
-        $result = curl_exec($ch);
+        curl_exec($ch);
         curl_close($ch);
 
         if ($attachmentCount > 0) {
             $this->deleteTempAttachmentFiles($data, $attachmentCount);
         }
-
-        return $result;
     }
 
-    protected function getEmailAddresses(Swift_Mime_SimpleMessage $message, $method = 'getTo')
-    {
-        $data = call_user_func([$message, $method]);
-
-        if (is_array($data)) {
-            return implode(',', array_keys($data));
-        }
-        return '';
-    }
-
-    protected function getFromAddress(Swift_Mime_SimpleMessage $message)
-    {
-        return [
-            'email' => array_keys($message->getFrom())[0],
-            'name' => array_values($message->getFrom())[0],
-        ];
-    }
-
-    protected function getText(Swift_Mime_SimpleMessage $message)
-    {
-        $text = null;
-
-        foreach ($message->getChildren() as $child) {
-            if ($child->getContentType() == 'text/plain') {
-                $text = $child->getBody();
-            }
-        }
-
-        return $text;
-    }
-
-    public function checkAttachmentCount($attachments)
-    {
-        $count = 0;
-        foreach ($attachments AS $attachment) {
-            if ($attachment instanceof \Swift_Attachment) {
-                $count++;
-            }
-        }
-        return $count;
-    }
+    /**
+     * Add attachments to post data array.
+     * @param $attachments
+     * @param $data
+     * @return mixed
+     */
 
     public function attach($attachments, $data)
     {
         if (is_array($attachments) && count($attachments) > 0) {
             $i = 1;
-            foreach ($attachments AS $attachment) {
-                if ($attachment instanceof \Swift_Attachment) {
+            foreach ($attachments as $attachment) {
+                if ($attachment instanceof DataPart) {
                     $attachedFile = $attachment->getBody();
-                    $fileName = $attachment->getFilename();
+                    $fileName = $attachment->getPreparedHeaders()->getHeaderParameter('Content-Disposition', 'filename');
                     $ext = pathinfo($fileName, PATHINFO_EXTENSION);
-                    $tempName = uniqid() . '.' . $ext;
+                    $tempName = uniqid().'.'.$ext;
                     Storage::put($tempName, $attachedFile);
-                    $type = $attachment->getContentType();
+                    $type = $attachment->getMediaType().'/'.$attachment->getMediaSubtype();
                     $attachedFilePath = storage_path($tempName);
-                    $data['file_' . $i] = new \CURLFile($attachedFilePath, $type, $fileName);
+                    $data['file_'.$i] = new \CurlFile($attachedFilePath, $type, $fileName);
                     $i++;
                 }
             }
@@ -134,10 +104,37 @@ class ElasticTransport extends Transport
         return $data;
     }
 
-    protected function deleteTempAttachmentFiles($data, $count)
+    /**
+     * Retrieve requested emailaddresses from email.
+     * @param Email $email
+     * @param string $method
+     * @return string
+     */
+
+    protected function getEmailAddresses(Email $email, $method = 'getTo')
+    {
+        $data = call_user_func([$email, $method]);
+
+        $addresses = [];
+        if (is_array($data)) {
+            foreach ($data as $address) {
+                $addresses[] = $address->getAddress();
+            }
+        }
+
+        return implode(',', $addresses);
+    }
+
+    /**
+     * Delete temporary attachment files.
+     * @param $data
+     * @param $count
+     */
+
+    protected function deleteTempAttachmentFiles($data, $count) : void
     {
         for ($i = 1; $i <= $count; $i++) {
-            $file = $data['file_' . $i]->name;
+            $file = $data['file_'.$i]->name;
             if (file_exists($file)) {
                 unlink($file);
             }
