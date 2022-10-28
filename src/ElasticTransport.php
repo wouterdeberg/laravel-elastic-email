@@ -22,7 +22,7 @@ class ElasticTransport extends AbstractTransport
 
     public function __toString(): string
     {
-        return 'elasticemail';
+        return 'elastic_email';
     }
 
      /**
