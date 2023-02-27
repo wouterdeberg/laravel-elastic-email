@@ -30,7 +30,7 @@ MAIL_MAILER=elastic_email
 'mailers' => [
     ...
     'elastic_email' => [
-        'transport' => 'elasticemail',
+        'transport' => 'elastic_email',
         'key' => env('ELASTIC_KEY')
     ],  
     ...
