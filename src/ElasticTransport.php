@@ -17,6 +17,8 @@ class ElasticTransport extends AbstractTransport
 
     public function __construct($key)
     {
+        parent::__construct();
+
         $this->key = $key;
     }
 
