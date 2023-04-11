@@ -49,6 +49,7 @@ class ElasticTransport extends AbstractTransport
             'bodyHtml' => $email->getHtmlBody(),
             'bodyText' => $email->getTextBody(),
             'isTransactional' => $email->getHeaders()->getHeaderBody('x-metadata-transactional') ? true : false,
+            'replyTo' => $this->getEmailAddresses($email, 'getReplyTo'),
         ];
 
         $attachments = $email->getAttachments();
