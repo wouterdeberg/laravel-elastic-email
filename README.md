@@ -37,7 +37,7 @@ MAIL_MAILER=elastic_email
 ],
 ```
 
-* Step 5: In your **config/app.php** file go to your providers array and comment out Laravel's default MailServiceProvider and add the following package provider:
+* Step 5: In your **config/app.php** file go to your providers array and add the following package provider:
 ```php
 'providers' => [
     /*
@@ -48,6 +48,8 @@ MAIL_MAILER=elastic_email
     ...
 ],
 ```
+
+* Step 5b: If you're using V1: comment out Laravel's default MailServiceProvider in the **config/app.php**.
 
 ### Usage ###
 
