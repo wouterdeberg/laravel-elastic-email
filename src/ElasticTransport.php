@@ -94,9 +94,9 @@ class ElasticTransport extends AbstractTransport
                     $fileName = $attachment->getPreparedHeaders()->getHeaderParameter('Content-Disposition', 'filename');
                     $ext = pathinfo($fileName, PATHINFO_EXTENSION);
                     $tempName = uniqid().'.'.$ext;
-                    Storage::put($tempName, $attachedFile);
+                    Storage::drive("local")->put($tempName, $attachedFile);
                     $type = $attachment->getMediaType().'/'.$attachment->getMediaSubtype();
-                    $attachedFilePath = storage_path($tempName);
+                    $attachedFilePath = Storage::drive("local")->path($tempName);
                     $data['file_'.$i] = new \CurlFile($attachedFilePath, $type, $fileName);
                     $i++;
                 }
