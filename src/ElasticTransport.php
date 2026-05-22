@@ -1,6 +1,5 @@
 <?php
 
-
 namespace FlexFlux\LaravelElasticEmail;
 
 use Symfony\Component\Mime\Email;
@@ -9,11 +8,12 @@ use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\MessageConverter;
 use Symfony\Component\Mailer\Transport\AbstractTransport;
+use Symfony\Component\Mailer\Exception\TransportException;
 
 class ElasticTransport extends AbstractTransport
 {
     protected $key;
-    protected $url = "https://api.elasticemail.com/v2/email/send";
+    protected $url = 'https://api.elasticemail.com/v2/email/send';
 
     public function __construct($key)
     {
@@ -27,7 +27,7 @@ class ElasticTransport extends AbstractTransport
         return 'elasticemail';
     }
 
-     /**
+    /**
      * {@inheritdoc}
      */
     public function doSend(SentMessage $message) : void
@@ -69,11 +69,40 @@ class ElasticTransport extends AbstractTransport
             CURLOPT_SSL_VERIFYPEER => false,
         ]);
 
-        curl_exec($ch);
+        $response = curl_exec($ch);
+        $curlErrno = curl_errno($ch);
+        $curlError = curl_error($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
         curl_close($ch);
 
         if ($attachmentCount > 0) {
             $this->deleteTempAttachmentFiles($data, $attachmentCount);
+        }
+
+        if ($curlErrno !== 0) {
+            throw new TransportException(sprintf('Elastic Email request failed: %s', $curlError));
+        }
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            throw new TransportException(sprintf(
+                'Elastic Email returned HTTP %d: %s',
+                $statusCode,
+                is_string($response) ? $response : '(no response body)'
+            ));
+        }
+
+        $decoded = is_string($response) ? json_decode($response, true) : null;
+
+        if (
+            is_array($decoded) &&
+            array_key_exists('success', $decoded) &&
+            $decoded['success'] === false
+        ) {
+            throw new TransportException(sprintf(
+                'Elastic Email reported failure: %s',
+                $decoded['error'] ?? 'unknown error'
+            ));
         }
     }
 
@@ -83,7 +112,6 @@ class ElasticTransport extends AbstractTransport
      * @param $data
      * @return mixed
      */
-
     public function attach($attachments, $data)
     {
         if (is_array($attachments) && count($attachments) > 0) {
@@ -112,7 +140,6 @@ class ElasticTransport extends AbstractTransport
      * @param string $method
      * @return string
      */
-
     protected function getEmailAddresses(Email $email, $method = 'getTo')
     {
         $data = call_user_func([$email, $method]);
@@ -132,7 +159,6 @@ class ElasticTransport extends AbstractTransport
      * @param $data
      * @param $count
      */
-
     protected function deleteTempAttachmentFiles($data, $count) : void
     {
         for ($i = 1; $i <= $count; $i++) {
