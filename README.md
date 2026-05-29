@@ -5,7 +5,7 @@ You can send e-mails in your project just like you usually do with Laravel's nat
 
 ## Requires
 V1 - Laravel version 8.12 or higher.
-V2 - Laravel version 9.0 or higher.
+V2 - Laravel version 9.0 or higher (supports Laravel 9, 10, 11, 12, 13).
 
 ### Installation ###
 

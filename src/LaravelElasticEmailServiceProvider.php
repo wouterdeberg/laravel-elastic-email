@@ -9,9 +9,10 @@ class LaravelElasticEmailServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        $this->app->afterResolving(MailManager::class, function (MailManager $manager) {
-            $manager->extend('elastic_email', function () {
-                $config = $this->app['config']->get('mail.mailers.elastic_email', []);
+        $app = $this->app;
+        $this->app->afterResolving(MailManager::class, function (MailManager $manager) use ($app) {
+            $manager->extend('elastic_email', function () use ($app) {
+                $config = $app['config']->get('mail.mailers.elastic_email', []);
 
                 return new ElasticTransport(
                     $config['key'],
