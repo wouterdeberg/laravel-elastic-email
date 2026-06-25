@@ -3,7 +3,6 @@
 namespace FlexFlux\LaravelElasticEmail;
 
 use Symfony\Component\Mime\Email;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\MessageConverter;
@@ -34,15 +33,20 @@ class ElasticTransport extends AbstractTransport
     {
         $email = MessageConverter::toEmail($message->getOriginalMessage());
 
+        $from = $email->getFrom();
+        if (empty($from)) {
+            throw new TransportException('Elastic Email: email has no From address.');
+        }
+
         $data = [
             'apikey' => $this->key,
             'msgTo' => $this->getEmailAddresses($email),
             'msgCC' => $this->getEmailAddresses($email, 'getCc'),
             'msgBcc' => $this->getEmailAddresses($email, 'getBcc'),
-            'msgFrom' => $email->getFrom()[0]->getAddress(),
-            'msgFromName' => $email->getFrom()[0]->getName(),
-            'from' => $email->getFrom()[0]->getAddress(),
-            'fromName' => $email->getFrom()[0]->getName(),
+            'msgFrom' => $from[0]->getAddress(),
+            'msgFromName' => $from[0]->getName(),
+            'from' => $from[0]->getAddress(),
+            'fromName' => $from[0]->getName(),
             'replyTo' => $this->getEmailAddresses($email, 'getReplyTo'),
             'to' => $this->getEmailAddresses($email),
             'subject' => $email->getSubject(),
@@ -52,13 +56,18 @@ class ElasticTransport extends AbstractTransport
         ];
 
         $attachments = $email->getAttachments();
-        $attachmentCount = count($attachments);
+        $tempFiles = [];
 
-        if ($attachmentCount > 0) {
-            $data = $this->attach($attachments, $data);
+        if (count($attachments) > 0) {
+            $data = $this->attach($attachments, $data, $tempFiles);
         }
 
         $ch = curl_init();
+
+        if ($ch === false) {
+            $this->deleteTempFiles($tempFiles);
+            throw new TransportException('Elastic Email: failed to initialise cURL.');
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_URL => $this->url,
@@ -66,7 +75,6 @@ class ElasticTransport extends AbstractTransport
             CURLOPT_POSTFIELDS => $data,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => false,
-            CURLOPT_SSL_VERIFYPEER => false,
         ]);
 
         $response = curl_exec($ch);
@@ -76,9 +84,7 @@ class ElasticTransport extends AbstractTransport
 
         curl_close($ch);
 
-        if ($attachmentCount > 0) {
-            $this->deleteTempAttachmentFiles($data, $attachmentCount);
-        }
+        $this->deleteTempFiles($tempFiles);
 
         if ($curlErrno !== 0) {
             throw new TransportException(sprintf('Elastic Email request failed: %s', $curlError));
@@ -110,22 +116,29 @@ class ElasticTransport extends AbstractTransport
      * Add attachments to post data array.
      * @param $attachments
      * @param $data
+     * @param array $tempFiles Populated with absolute paths of temp files for later cleanup.
      * @return mixed
      */
-    public function attach($attachments, $data)
+    public function attach($attachments, $data, array &$tempFiles = [])
     {
         if (is_array($attachments) && count($attachments) > 0) {
             $i = 1;
             foreach ($attachments as $attachment) {
                 if ($attachment instanceof DataPart) {
-                    $attachedFile = $attachment->getBody();
-                    $fileName = $attachment->getPreparedHeaders()->getHeaderParameter('Content-Disposition', 'filename');
+                    $fileName = $attachment->getPreparedHeaders()->getHeaderParameter('Content-Disposition', 'filename') ?? '';
                     $ext = pathinfo($fileName, PATHINFO_EXTENSION);
-                    $tempName = uniqid().'.'.$ext;
-                    Storage::put($tempName, $attachedFile);
+                    $placeholder = tempnam(sys_get_temp_dir(), 'elastic_');
+                    if ($placeholder === false) {
+                        throw new TransportException('Elastic Email: could not create temporary file for attachment.');
+                    }
+                    $tempPath = $ext !== '' ? $placeholder . '.' . $ext : $placeholder;
+                    file_put_contents($tempPath, $attachment->getBody());
                     $type = $attachment->getMediaType().'/'.$attachment->getMediaSubtype();
-                    $attachedFilePath = storage_path($tempName);
-                    $data['file_'.$i] = new \CurlFile($attachedFilePath, $type, $fileName);
+                    $data['file_'.$i] = new \CurlFile($tempPath, $type, $fileName);
+                    $tempFiles[] = $placeholder;
+                    if ($tempPath !== $placeholder) {
+                        $tempFiles[] = $tempPath;
+                    }
                     $i++;
                 }
             }
@@ -156,15 +169,13 @@ class ElasticTransport extends AbstractTransport
 
     /**
      * Delete temporary attachment files.
-     * @param $data
-     * @param $count
+     * @param array $tempFiles Absolute paths returned by attach()
      */
-    protected function deleteTempAttachmentFiles($data, $count) : void
+    protected function deleteTempFiles(array $tempFiles): void
     {
-        for ($i = 1; $i <= $count; $i++) {
-            $file = $data['file_'.$i]->name;
-            if (file_exists($file)) {
-                unlink($file);
+        foreach ($tempFiles as $path) {
+            if (file_exists($path)) {
+                unlink($path);
             }
         }
     }
