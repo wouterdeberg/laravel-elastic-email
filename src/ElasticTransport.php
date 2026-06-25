@@ -62,43 +62,23 @@ class ElasticTransport extends AbstractTransport
             $data = $this->attach($attachments, $data, $tempFiles);
         }
 
-        $ch = curl_init();
-
-        if ($ch === false) {
-            $this->deleteTempFiles($tempFiles);
-            throw new TransportException('Elastic Email: failed to initialise cURL.');
-        }
-
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->url,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $data,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => false,
-        ]);
-
-        $response = curl_exec($ch);
-        $curlErrno = curl_errno($ch);
-        $curlError = curl_error($ch);
-        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
+        $result = $this->executeCurl($data);
 
         $this->deleteTempFiles($tempFiles);
 
-        if ($curlErrno !== 0) {
-            throw new TransportException(sprintf('Elastic Email request failed: %s', $curlError));
+        if ($result['errno'] !== 0) {
+            throw new TransportException(sprintf('Elastic Email request failed: %s', $result['error']));
         }
 
-        if ($statusCode < 200 || $statusCode >= 300) {
+        if ($result['statusCode'] < 200 || $result['statusCode'] >= 300) {
             throw new TransportException(sprintf(
                 'Elastic Email returned HTTP %d: %s',
-                $statusCode,
-                is_string($response) ? $response : '(no response body)'
+                $result['statusCode'],
+                is_string($result['response']) ? $result['response'] : '(no response body)'
             ));
         }
 
-        $decoded = is_string($response) ? json_decode($response, true) : null;
+        $decoded = is_string($result['response']) ? json_decode($result['response'], true) : null;
 
         if (
             is_array($decoded) &&
@@ -110,6 +90,39 @@ class ElasticTransport extends AbstractTransport
                 $decoded['error'] ?? 'unknown error'
             ));
         }
+    }
+
+    /**
+     * Execute the cURL request and return a result array.
+     * Extracted into a protected method so tests can override it.
+     *
+     * @param array<string,mixed> $postData
+     * @return array{response: string|false, errno: int, error: string, statusCode: int}
+     */
+    protected function executeCurl(array $postData): array
+    {
+        $ch = curl_init();
+
+        if ($ch === false) {
+            throw new TransportException('Elastic Email: failed to initialise cURL.');
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $this->url,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $postData,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => false,
+        ]);
+
+        $response   = curl_exec($ch);
+        $errno      = curl_errno($ch);
+        $error      = curl_error($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        curl_close($ch);
+
+        return compact('response', 'errno', 'error', 'statusCode');
     }
 
     /**
